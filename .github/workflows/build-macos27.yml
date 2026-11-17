@@ -14,17 +14,19 @@ jobs:
 
       - name: 下載 UniXNU 及 sheng 專屬驅動庫
         run: |
-          mkdir -p ~/work && cd ~/work
+          rm -rf ~/unixnu-build
+          mkdir -p ~/unixnu-build && cd ~/unixnu-build
           git clone --recurse-submodules https://github.com/UniXNU/UniXNU
           git clone --recurse-submodules https://github.com/UniXNU/UniXNU-sheng
           git clone --recurse-submodules https://github.com/UniXNU/uefi-sheng
 
       - name: 安裝 Mac 編譯工具鏈
         run: |
-          brew install python@3.12 llvm lld dtc mtools cmake ninja meson rsync uv zstd p7zip
+          export HOMEBREW_NO_AUTO_UPDATE=1
+          brew install python@3.12 llvm lld dtc mtools cmake ninja meson rsync uv zstd p7zip || true
 
       - name: 拉取 macOS 27 IPSW 與小米底層韌體
-        working-directory: ~/work/UniXNU
+        working-directory: ~/unixnu-build/UniXNU
         run: |
           cp unixnu.example.toml unixnu.local.toml
           ./unixnu defconfig sheng_ipados26_defconfig -D ../UniXNU-sheng
@@ -33,7 +35,7 @@ jobs:
           ./unixnu tree --os macos-27
 
       - name: 編譯 XNU 核心、UEFI 及生成 Data 種子
-        working-directory: ~/work/UniXNU
+        working-directory: ~/unixnu-build/UniXNU
         run: |
           ./unixnu build kernel --os macos-27
           ./unixnu build package --os macos-27
@@ -44,7 +46,7 @@ jobs:
           ./unixnu bootimg --os macos-27
 
       - name: 壓縮開機檔與系統鏡像
-        working-directory: ~/work/UniXNU
+        working-directory: ~/unixnu-build/UniXNU
         run: |
           mkdir -p ~/upload
           find out/ -name "boot.img" -exec cp {} ~/upload/ \;
