@@ -1,0 +1,58 @@
+name: Build macOS 27 for Xiaomi Pad 6S Pro (sheng)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: 清理雲端空間確保夠位放 IPSW
+        run: |
+          sudo rm -rf /Applications/Xcode_15.0.app /Applications/Xcode_15.1.app /Applications/Xcode_15.2.app || true
+          df -h
+
+      - name: 下載 UniXNU 及 sheng 專屬驅動庫
+        run: |
+          mkdir -p ~/work && cd ~/work
+          git clone --recurse-submodules https://github.com/UniXNU/UniXNU
+          git clone --recurse-submodules https://github.com/UniXNU/UniXNU-sheng
+          git clone --recurse-submodules https://github.com/UniXNU/uefi-sheng
+
+      - name: 安裝 Mac 編譯工具鏈
+        run: |
+          brew install python@3.12 llvm lld dtc mtools cmake ninja meson rsync uv zstd p7zip
+
+      - name: 拉取 macOS 27 IPSW 與小米底層韌體
+        working-directory: ~/work/UniXNU
+        run: |
+          cp unixnu.example.toml unixnu.local.toml
+          ./unixnu defconfig sheng_ipados26_defconfig -D ../UniXNU-sheng
+          ./unixnu fetch --os macos-27
+          ./unixnu ipsw fetch --os macos-27
+          ./unixnu tree --os macos-27
+
+      - name: 編譯 XNU 核心、UEFI 及生成 Data 種子
+        working-directory: ~/work/UniXNU
+        run: |
+          ./unixnu build kernel --os macos-27
+          ./unixnu build package --os macos-27
+          ./unixnu build firmware --uefi ../uefi-sheng --os macos-27
+          sudo python3 scripts/make-macos-data-seed.py --os macos-27 || true
+          ./unixnu build payload --os macos-27 --skip-setup
+          ./unixnu build userdata --os macos-27
+          ./unixnu bootimg --os macos-27
+
+      - name: 壓縮開機檔與系統鏡像
+        working-directory: ~/work/UniXNU
+        run: |
+          mkdir -p ~/upload
+          find out/ -name "boot.img" -exec cp {} ~/upload/ \;
+          find out/ -name "userdata-root.img" -exec 7z a -v1900m -mx=3 ~/upload/userdata-root.7z {} \;
+
+      - name: 上傳成品供 Windows 下載
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos27-sheng-images
+          path: ~/upload/*
+          retention-days: 5
