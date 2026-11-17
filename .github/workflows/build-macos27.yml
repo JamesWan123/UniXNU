@@ -14,8 +14,8 @@ jobs:
 
       - name: 下載 UniXNU 及 sheng 專屬驅動庫
         run: |
-          rm -rf ~/unixnu-build
-          mkdir -p ~/unixnu-build && cd ~/unixnu-build
+          rm -rf workspace
+          mkdir -p workspace && cd workspace
           git clone --recurse-submodules https://github.com/UniXNU/UniXNU
           git clone --recurse-submodules https://github.com/UniXNU/UniXNU-sheng
           git clone --recurse-submodules https://github.com/UniXNU/uefi-sheng
@@ -26,7 +26,7 @@ jobs:
           brew install python@3.12 llvm lld dtc mtools cmake ninja meson rsync uv zstd p7zip || true
 
       - name: 拉取 macOS 27 IPSW 與小米底層韌體
-        working-directory: ~/unixnu-build/UniXNU
+        working-directory: workspace/UniXNU
         run: |
           cp unixnu.example.toml unixnu.local.toml
           ./unixnu defconfig sheng_ipados26_defconfig -D ../UniXNU-sheng
@@ -35,7 +35,7 @@ jobs:
           ./unixnu tree --os macos-27
 
       - name: 編譯 XNU 核心、UEFI 及生成 Data 種子
-        working-directory: ~/unixnu-build/UniXNU
+        working-directory: workspace/UniXNU
         run: |
           ./unixnu build kernel --os macos-27
           ./unixnu build package --os macos-27
@@ -46,15 +46,15 @@ jobs:
           ./unixnu bootimg --os macos-27
 
       - name: 壓縮開機檔與系統鏡像
-        working-directory: ~/unixnu-build/UniXNU
+        working-directory: workspace/UniXNU
         run: |
-          mkdir -p ~/upload
-          find out/ -name "boot.img" -exec cp {} ~/upload/ \;
-          find out/ -name "userdata-root.img" -exec 7z a -v1900m -mx=3 ~/upload/userdata-root.7z {} \;
+          mkdir -p ../upload
+          find out/ -name "boot.img" -exec cp {} ../upload/ \;
+          find out/ -name "userdata-root.img" -exec 7z a -v1900m -mx=3 ../upload/userdata-root.7z {} \;
 
       - name: 上傳成品供 Windows 下載
         uses: actions/upload-artifact@v4
         with:
           name: macos27-sheng-images
-          path: ~/upload/*
+          path: workspace/upload/*
           retention-days: 5
