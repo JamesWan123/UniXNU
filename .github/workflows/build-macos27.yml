@@ -5,11 +5,15 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-14
     steps:
-      - name: 清理雲端空間確保夠位放 IPSW
+      - name: 清理雲端空間
         run: |
-          sudo rm -rf /Applications/Xcode_15.0.app /Applications/Xcode_15.1.app /Applications/Xcode_15.2.app || true
+          ACTIVE_XCODE=$(xcode-select -p | sed 's|/Contents/Developer||')
+          for app in /Applications/Xcode*.app; do
+            if [ "$app" != "$ACTIVE_XCODE" ]; then sudo rm -rf "$app"; fi
+          done
+          sudo rm -rf ~/Library/Android /Library/Developer/CoreSimulator || true
           df -h
 
       - name: 下載 UniXNU 及 sheng 專屬驅動庫
@@ -28,11 +32,12 @@ jobs:
       - name: 拉取 macOS 27 IPSW 與小米底層韌體
         working-directory: workspace/UniXNU
         run: |
-          cp unixnu.example.toml unixnu.local.toml
-          ./unixnu defconfig sheng_ipados26_defconfig -D ../UniXNU-sheng
+          sed 's/<device>/sheng/g' unixnu.example.toml > unixnu.local.toml
+          ./unixnu defconfig sheng_ipados26_defconfig -D ../UniXNU-sheng --os macos-27
           ./unixnu fetch --os macos-27
           ./unixnu ipsw fetch --os macos-27
           ./unixnu tree --os macos-27
+          find out/ -name "*.ipsw" -delete || true
 
       - name: 編譯 XNU 核心、UEFI 及生成 Data 種子
         working-directory: workspace/UniXNU
@@ -40,8 +45,11 @@ jobs:
           ./unixnu build kernel --os macos-27
           ./unixnu build package --os macos-27
           ./unixnu build firmware --uefi ../uefi-sheng --os macos-27
-          sudo python3 scripts/make-macos-data-seed.py --os macos-27 || true
-          ./unixnu build payload --os macos-27 --skip-setup
+          if ! ./unixnu build payload --os macos-27 --skip-setup 2>&1 | tee payload.log; then
+            SEED_CMD=$(grep -o "sudo python3 .*make-macos-data-seed\.py.*" payload.log | head -n 1)
+            if [ -n "$SEED_CMD" ]; then eval "$SEED_CMD"; fi
+            ./unixnu build payload --os macos-27 --skip-setup
+          fi
           ./unixnu build userdata --os macos-27
           ./unixnu bootimg --os macos-27
 
@@ -50,11 +58,11 @@ jobs:
         run: |
           mkdir -p ../upload
           find out/ -name "boot.img" -exec cp {} ../upload/ \;
-          find out/ -name "userdata-root.img" -exec 7z a -v1900m -mx=3 ../upload/userdata-root.7z {} \;
+          find out/ -name "userdata-root.img" -exec 7z a -v1900m -mx=1 ../upload/userdata-root.7z {} \;
 
       - name: 上傳成品供 Windows 下載
         uses: actions/upload-artifact@v4
         with:
           name: macos27-sheng-images
           path: workspace/upload/*
-          retention-days: 5
+          retention-days: 3
